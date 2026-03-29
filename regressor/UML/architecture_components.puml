@@ -1,0 +1,45 @@
+@startuml
+title Homotopy Regressors - Arquitectura de Componentes
+
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+
+package "Core Escalar" {
+  [solver.py] as Solver
+  [regressor.py] as Regressor
+  [derivatives.py] as Derivatives
+  [parser.py] as Parser
+}
+
+package "Core Sistemas" {
+  [solver_system.py] as SolverSys
+  [regressor_system.py] as RegressorSys
+}
+
+package "Validacion e Identificacion" {
+  [verify_regressor.py] as Verify
+  [identify_parameters.py] as Identify
+}
+
+package "Scripts y Tests" {
+  [examples.py] as Examples
+  [test_regressor_vs_rk4.py] as TestRK
+  [test_inverse_regressor.py] as TestInv
+}
+
+Regressor --> Solver : genera callables\nf,df,d2f,d3f
+Parser --> Regressor : parsea EDO\nforma estandar
+Derivatives --> Solver : utilidades discretas
+
+RegressorSys --> SolverSys : funcs/jac/hess/tensor\nsymbolic -> numeric
+
+Verify --> Regressor : compara salida HAM
+Verify --> RegressorSys : compara salida HAM
+Identify --> Regressor : usa mismos stencils 3 puntos
+
+Examples --> Regressor
+Examples --> Solver
+TestRK --> Verify
+TestInv --> Regressor
+
+@enduml

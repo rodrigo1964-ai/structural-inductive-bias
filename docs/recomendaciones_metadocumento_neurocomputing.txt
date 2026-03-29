@@ -1,0 +1,111 @@
+RECOMENDACIONES CRÍTICAS PARA EL METADOCUMENTO NEUROCOMPUTING
+===============================================================
+
+1. RELATED WORK: CONSIDERAR FUSIÓN CON INTRODUCCIÓN
+
+   Neurocomputing no exige Related Work como sección independiente.
+   Muchos papers publicados integran el estado del arte dentro de la
+   Introducción, especialmente en papers cortos (~8000 palabras).
+   Forzar 1000-1500 palabras de Related Work más 900-1400 de
+   Introducción genera redundancia cuando el landscape de métodos
+   no es amplio. Para papers HAM, donde el nicho es relativamente
+   estrecho, esta sección puede quedar artificialmente inflada.
+
+   Recomendación: hacer la separación opcional. Si el paper tiene
+   un landscape amplio de métodos competidores, separar. Si no,
+   integrar en la Introducción como subsección.
+
+2. REFERENCIAS: AJUSTAR EL RANGO
+
+   El rango 40-80 es excesivo. El extremo superior sugiere un
+   survey, no un paper de método. Papers de Neurocomputing en el
+   rango 8000-10000 palabras típicamente tienen 35-55 referencias.
+
+   Recomendación: ajustar a 35-60 referencias. Mantener la
+   indicación de alta proporción reciente (últimos 5 años).
+
+3. PROBLEM FORMULATION: CONSIDERAR FUSIÓN CON PROPOSED METHOD
+
+   Con solo 6% del paper (400-700 palabras), esta sección puede
+   quedar como una sección huérfana que no justifica existencia
+   independiente. Muchos papers exitosos en Neurocomputing la
+   fusionan con el inicio del Proposed Method.
+
+   Recomendación: fusionar por defecto. Separar solo cuando la
+   formalización del problema sea sustancialmente distinta de la
+   formulación del método (por ejemplo, si el problema tiene una
+   formulación estándar y el método es la contribución novedosa).
+
+4. AGREGAR: REPRODUCIBILIDAD (CÓDIGO Y DATOS)
+
+   El metadocumento no menciona disponibilidad de código ni de
+   datos. Neurocomputing valora esto cada vez más, y el formulario
+   de submission ya exige un data repository (Zenodo, figshare, etc.).
+
+   Recomendación: agregar una sección o nota estructural:
+   - Repositorio de código (GitHub u otro)
+   - Repositorio de datos (Zenodo/figshare)
+   - Instrucciones de reproducción (requirements, seeds, hardware)
+   Esto no es un afterthought sino un elemento evaluado por
+   reviewers y editores.
+
+5. ABLATION STUDY: ELEVAR SU PESO
+
+   El ablation study aparece como un ítem más dentro de Experiments,
+   pero es lo que más frecuentemente piden los reviewers cuando
+   rechazan o solicitan revisión mayor.
+
+   Recomendación: darle subsección propia dentro de Experiments con
+   guía específica:
+   - Qué componentes ablacionar (cada módulo novedoso del método)
+   - Cómo reportar impacto marginal (tabla con/sin cada componente)
+   - Mínimo: una tabla dedicada de ablación
+   - Si el método tiene hiperparámetros clave (por ejemplo, orden
+     de truncamiento en HAM), incluir análisis de sensibilidad
+
+6. DISCUSSION: FORTALECER EL CONTENIDO
+
+   Si se mantiene separada de Experiments, la Discussion necesita
+   más que "interpretación de resultados". Debe incluir:
+   - Posicionamiento causal: ¿por qué el método logra lo que logra?
+   - Comparación cualitativa con SOTA (no solo numérica)
+   - Análisis de casos de fallo con hipótesis explicativas
+   - Implicaciones prácticas para el usuario del método
+
+   Alternativa: fusionar como "Results and Discussion", formato
+   común en Neurocomputing. Revisá papers recientes del journal
+   para calibrar cuál formato domina en tu subárea.
+
+7. AGREGAR: FORMATO DE FIGURAS Y TABLAS
+
+   El metadocumento no menciona requisitos de formato. Elsevier
+   tiene especificaciones concretas que deben estar en un documento
+   operativo:
+   - Resolución mínima: 300 dpi para figuras rasterizadas
+   - Formatos aceptados: PDF, EPS, TIFF (vectorial preferido)
+   - Ancho de columna: ~88 mm (1 col), ~182 mm (2 col)
+   - Fuente mínima en figuras: 6 pt después de reducción
+   - Tablas: sin líneas verticales, solo horizontales principales
+   - Leyendas autocontenidas (comprensibles sin leer el texto)
+
+RESUMEN DE CAMBIOS PROPUESTOS
+===============================================================
+
+   Sección              Acción
+   -------------------  ------------------------------------------
+   Related Work         Hacer opcional (fusionable con Introducción)
+   Problem Formulation  Fusionar por defecto con Proposed Method
+   Discussion           Fortalecer contenido o fusionar con Results
+   Ablation Study       Subsección propia dentro de Experiments
+   Referencias          Ajustar rango a 35-60
+   Reproducibilidad     Agregar como elemento estructural nuevo
+   Formato figuras      Agregar especificaciones Elsevier
+
+PRINCIPIO GENERAL
+===============================================================
+
+   El metadocumento debe ser flexible, no prescriptivo. Las
+   secciones opcionales deben marcarse como tales, con criterios
+   claros para decidir cuándo separar y cuándo fusionar. Un
+   metadocumento rígido aplicado sin criterio produce papers
+   inflados en las secciones débiles y comprimidos en las fuertes.

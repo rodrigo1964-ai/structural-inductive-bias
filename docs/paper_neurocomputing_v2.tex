@@ -1,0 +1,1362 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath,amsfonts,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{lineno}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+%% For final submission, replace this preamble with:
+%% \documentclass[review,12pt]{elsarticle}
+%% and use \begin{frontmatter}...\end{frontmatter}
+
+\modulolinenumbers[5]
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}{Assumption}
+\newtheorem{remark}{Remark}
+\newtheorem{counterexample}{Counterexample}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\MLP}{\mathrm{MLP}}
+\newcommand{\norm}[1]{\left\|#1\right\|}
+\newcommand{\abs}[1]{\left|#1\right|}
+\newcommand{\Rad}{\mathfrak{R}}
+
+\begin{document}
+
+\title{Structural Inductive Bias Reduces Sample Complexity\\
+in Implicit Neural Models for Dynamical Systems}
+
+\author{Rodolfo O.\ Rodrigo\\[4pt]
+  \small Instituto de Autom\'atica (INAUT),
+  CONICET--Universidad Nacional de San Juan, Argentina\\
+  \small \texttt{rrodrigo@inaut.unsj.edu.ar}}
+\date{}
+\maketitle
+
+\begin{abstract}
+We prove that implicit neural models with structural inductive bias
+achieve tighter generalization bounds than explicit models, and
+therefore require fewer training samples for the same approximation
+quality.
+The key mechanism is that an implicit formulation
+$F(x, y, \MLP(x;\theta)) = 0$, where $F$ encodes known structural
+knowledge about the target function, \emph{changes} the learning
+target: the network approximates a simpler residual $h^*$ instead
+of the original function $f^*$.
+Using Rademacher complexity theory, we derive explicit generalization
+bounds for both explicit and implicit formulations, and establish a
+quantitative gain condition under which the implicit model achieves
+lower sample complexity.
+We define the \emph{structural content} of $F$ as the ratio of path
+norm reduction, and show that the implicit model outperforms the
+explicit one if and only if the structural content exceeds an
+amplification factor determined by the Lipschitz constant of $F$.
+We provide sufficient conditions for complexity reduction (structural
+factorization, nonlinearity absorption), counterexamples showing
+when implicit models fail to help, and two instantiations of the
+framework:
+physics-informed variable transformations, where $F$ absorbs known
+solution structure such as oscillatory or exponential behavior,
+reducing the learning target to a slowly varying modulation; and
+the Homotopy Analysis Method (HAM), where $F$ encodes the governing
+differential equation and decomposes the solution into a series of
+linear corrections of decreasing complexity.
+We distinguish this target-transformation mechanism from the
+regularization approach of Physics-Informed Neural Networks (PINNs),
+which constrains the optimization landscape but does not change the
+learning target.
+The connection to a deeper topological framework based on
+autosimilar function spaces is identified as a direction for future
+work.
+\end{abstract}
+
+\noindent\textbf{Keywords:} Sample complexity; Rademacher complexity;
+structural inductive bias; implicit neural models;
+Homotopy Analysis Method; physics-informed architectures
+
+\linenumbers
+
+%% =========================================================
+\section{Introduction}
+\label{sec:intro}
+%% =========================================================
+
+Neural networks have become the dominant tool for approximating
+unknown functions from data, with universal approximation theorems
+guaranteeing that sufficiently large networks can approximate any
+continuous function on a compact domain
+\cite{Cybenko1989, Hornik1991, Funahashi1989}.
+However, universality is a statement about \emph{capacity}, not about
+\emph{efficiency}: knowing that a network \emph{can} approximate
+$f^*$ says nothing about how many parameters or training samples are
+needed to do so reliably.
+The gap between capacity and efficiency is governed by the
+\emph{complexity} of the hypothesis class relative to the target
+function.
+
+In the context of dynamical systems, the target function $f^*$ is
+not arbitrary: it is constrained by physical laws, symmetries, and
+structural regularities.
+A neural network that ignores these constraints must discover all
+structure from data alone.
+A network that exploits them --- by embedding known structure into
+the model --- should, in principle, require less data for the same
+approximation quality.
+This intuition is widely held but rarely formalized.
+
+Several strategies have been proposed for injecting physical
+knowledge into neural models.
+Physics-Informed Neural Networks (PINNs) \cite{Raissi2019} add a
+PDE residual term to the loss function, penalizing solutions
+incompatible with the governing equation.
+Neural ODEs \cite{Chen2018} parametrize the vector field
+$\dot{x} = f_\theta(x)$ and integrate it with a standard solver.
+Deep Equilibrium Models (DEQs) \cite{Bai2019} define the output as
+a fixed point of an implicit layer.
+These approaches constrain the optimization landscape but share a
+common feature: the network still approximates the full target
+function $f^*$ directly.
+The physics acts as a regularizer, not as a simplifier of the
+learning target.
+
+A fundamentally different strategy is to \emph{transform} the
+learning target by encoding structural knowledge in the model
+architecture.
+If $f^*(x) = g(x) \cdot e^{-\lambda x}$ with $\lambda$ known, one
+can define $\hat{f}(x) = \MLP(x;\theta) \cdot e^{-\lambda x}$, so
+the network learns only the slowly varying modulation $g$ instead of
+the full product $f^*$.
+The known exponential structure is \emph{absorbed} by the model; the
+network's learning target is genuinely simpler.
+
+The present paper formalizes this target-transformation mechanism.
+We prove that when a known function $F$ encodes structural knowledge
+about $f^*$ and the network participates in an implicit equation
+$F(x, y, \MLP(x;\theta)) = 0$, the learning target changes from
+$f^*$ to a simpler residual $h^*$, and the sample complexity
+decreases quantifiably.
+
+\begin{remark}[Distinction from PINNs]
+\label{rem:pinn_distinction}
+It is important to distinguish the mechanism formalized here from the
+PINN approach \cite{Raissi2019}.
+In a PINN, the network $u_\theta(x)$ approximates $f^*$ directly;
+the PDE residual $\mathcal{N}[u_\theta]$ is added to the loss as a
+regularizer.
+The learning target remains $f^* $--- the network must represent the
+full solution.
+In our framework, the implicit function $F$ \emph{changes} the
+learning target from $f^*$ to a different, simpler function
+$h^*$ defined by $F(x, f^*(x), h^*(x)) = 0$.
+The network approximates $h^*$, which has lower complexity.
+
+PINNs reduce effective complexity by constraining the optimization
+landscape (a property of the training algorithm).
+The present framework reduces effective complexity by reducing the
+\emph{intrinsic difficulty of the approximation target} (a property
+of the function class), which translates into tighter generalization
+bounds independently of the optimization method.
+The two mechanisms are complementary, not competing: one could use a
+PINN-style residual loss \emph{in addition to} a target-transforming
+implicit model.
+\end{remark}
+
+\subsection{Contributions}
+
+\begin{enumerate}
+  \item We derive explicit Rademacher complexity bounds for both
+    explicit and implicit formulations
+    (Theorem~\ref{teo:principal}), with a rigorous treatment of the
+    Lipschitz composition and centering correction required by the
+    implicit model.
+  \item We establish a quantitative \emph{gain condition}
+    (Corollary~\ref{cor:datos}) under which the implicit model
+    requires fewer training samples, expressed in terms of the
+    path norm reduction and the Lipschitz constant of~$F$.
+  \item We define the \emph{structural content} of $F$
+    (Definition~\ref{def:structural_content}) as the ratio of path
+    norm bounds, and provide sufficient conditions for $F$ to have
+    positive structural content (Propositions~\ref{prop:factorizacion}
+    and~\ref{prop:absorcion}).
+  \item We show that physics-informed variable transformations and
+    HAM-based decompositions are instances of this framework
+    (Section~\ref{sec:instances}), explaining why architectures
+    such as SIREN \cite{Sitzmann2020} and Laguerre networks
+    outperform generic MLPs for specific dynamical classes.
+  \item We provide counterexamples (Section~\ref{sec:counter})
+    showing that not every implicit formulation reduces complexity,
+    and characterize the conditions under which the implicit model
+    is actually worse.
+\end{enumerate}
+
+The connection between the structural inductive bias formalized here
+and a deeper topological framework based on autosimilar function
+spaces and iterated function systems is identified as a direction for
+future work (Section~\ref{sec:discussion}).
+
+%% =========================================================
+\section{Problem Formulation}
+\label{sec:formulation}
+%% =========================================================
+
+\begin{definition}[Learning scenario]
+\label{def:scenario}
+Let $\mathcal{X} \subset \R^n$ be compact with $\norm{x} \le X_{\max}$
+for all $x \in \mathcal{X}$.
+Let $f^*: \mathcal{X} \to \R$ be the unknown target function.
+A training set $S = \{(x_i, y_i)\}_{i=1}^N$ is available with
+$y_i = f^*(x_i) + \varepsilon_i$, where $\varepsilon_i$ is
+sub-Gaussian noise with parameter $\sigma^2$.
+\end{definition}
+
+\begin{definition}[Hypothesis class]
+\label{def:hypothesis}
+For an MLP of depth $L$ and maximum width $d$, the hypothesis class
+with bounded spectral path norm is:
+\begin{equation}
+  \mathcal{H}_B = \left\{ \MLP(\cdot\,;\theta) :
+    \prod_{l=1}^{L} \norm{W_l}_\sigma \le B \right\}
+\end{equation}
+where $\norm{W_l}_\sigma$ is the spectral norm of the weight matrix
+at layer $l$ and $B > 0$ is the path norm bound.
+\end{definition}
+
+We consider two formulations for learning $f^*$:
+
+\textbf{Explicit formulation.}
+The network approximates $f^*$ directly:
+\begin{equation}
+  \hat{\theta}_{\mathrm{exp}} = \arg\min_\theta \;
+  \hat{\mathcal{L}}_{\mathrm{exp}}(\theta)
+  = \arg\min_\theta \;
+  \frac{1}{N}\sum_{i=1}^{N}(y_i - \MLP(x_i;\theta))^2.
+  \label{eq:loss_exp}
+\end{equation}
+
+\textbf{Implicit formulation.}
+Let $F: \mathcal{X} \times \R \times \R \to \R$ be a known function
+of class $C^1$.
+The network participates as a component of an implicit equation:
+\begin{equation}
+  \hat{\theta}_{\mathrm{imp}} = \arg\min_\theta \;
+  \hat{\mathcal{L}}_{\mathrm{imp}}(\theta)
+  = \arg\min_\theta \;
+  \frac{1}{N}\sum_{i=1}^{N} F(x_i, y_i, \MLP(x_i;\theta))^2.
+  \label{eq:loss_imp}
+\end{equation}
+
+The function $F$ encodes structural knowledge about the relationship
+between $x$ and $y$.
+When $F(x,y,z) = y - z$, the implicit formulation reduces to the
+explicit one.
+When $F$ is nontrivial, it absorbs part of the complexity of $f^*$,
+so that the network learns a different, simpler function
+$h^* \ne f^*$.
+
+%% =========================================================
+\section{Formal Hypotheses}
+\label{sec:hypotheses}
+%% =========================================================
+
+\begin{assumption}[Regularity of $F$]
+\label{hip:F}
+The function $F: \mathcal{X} \times \R \times \R \to \R$ satisfies:
+\begin{enumerate}[label=(\alph*)]
+  \item $F$ is $C^1$ in all variables.
+  \item \textbf{Local Lipschitz in the training region.}
+    Let $\mathcal{R} = \mathcal{X} \times \mathcal{Y} \times
+    \mathcal{Z}$ be the training region, where
+    $\mathcal{Y} \supset \{f^*(x) : x \in \mathcal{X}\}$ and
+    $\mathcal{Z} \supset \{h^*(x) : x \in \mathcal{X}\}$ are compact
+    neighborhoods.
+    There exist constants $0 < \alpha \le \beta$ such that:
+    \begin{equation}
+      \alpha \;\le\; \abs{\frac{\partial F}{\partial z}(x,y,z)}
+      \;\le\; \beta \qquad \forall\,(x,y,z) \in \mathcal{R}.
+      \label{eq:sandwich}
+    \end{equation}
+    The constant $\beta$ is \emph{local}: it depends on the size of
+    $\mathcal{R}$ and is not required to hold globally.
+  \item $\frac{\partial F}{\partial y}(x,y,z) \neq 0$ on
+    $\mathcal{R}$ (Implicit Function Theorem condition).
+\end{enumerate}
+\end{assumption}
+
+\begin{assumption}[Existence of implicit target]
+\label{hip:h}
+Under Assumption~\ref{hip:F}, there exists a function
+$h^*: \mathcal{X} \to \R$ of class $C^1$, defined implicitly by:
+\begin{equation}
+  F(x, f^*(x), h^*(x)) = 0 \qquad \forall\, x \in \mathcal{X}.
+\end{equation}
+The function $h^*$ is what the MLP must learn in the implicit
+formulation.
+\end{assumption}
+
+\begin{assumption}[Complexity reduction]
+\label{hip:reduccion}
+There exist path norm bounds $B_{\mathrm{exp}}$ and $B_{\mathrm{imp}}$
+such that:
+\begin{enumerate}[label=(\alph*)]
+  \item $f^*$ is $\varepsilon_0$-approximable by
+    $\mathcal{H}_{B_{\mathrm{exp}}}$.
+  \item $h^*$ is $\varepsilon_0$-approximable by
+    $\mathcal{H}_{B_{\mathrm{imp}}}$.
+  \item $B_{\mathrm{imp}} < B_{\mathrm{exp}}$.
+\end{enumerate}
+\end{assumption}
+
+\begin{remark}[Nature of Assumption~\ref{hip:reduccion}]
+\label{rem:nature}
+Assumption~\ref{hip:reduccion} is the substantive hypothesis.
+Assumptions~\ref{hip:F} and~\ref{hip:h} are technical regularity
+conditions.
+The claim ``the implicit model requires fewer data'' is exactly as
+strong as Assumption~\ref{hip:reduccion} --- it depends entirely on
+how much complexity $F$ absorbs.
+Sections~\ref{sec:sufficient} and~\ref{sec:counter} provide
+conditions under which this assumption holds or fails.
+\end{remark}
+
+%% =========================================================
+\section{Preliminary Results}
+\label{sec:prelim}
+%% =========================================================
+
+\begin{lemma}[Rademacher complexity of norm-bounded networks ---
+Golowich, Rakhlin \& Shamir \cite{Golowich2018}]
+\label{lema:rad}
+For the class $\mathcal{H}_B$ of networks of depth $L$, maximum
+width $d$, and spectral path norm bounded by $B$:
+\begin{equation}
+  \Rad_N(\mathcal{H}_B) \;\le\;
+  \frac{B \cdot X_{\max} \cdot \sqrt{2L\log(2d)}}{\sqrt{N}}.
+  \label{eq:rademacher_nn}
+\end{equation}
+\end{lemma}
+
+\begin{remark}[On the simplification]
+\label{rem:simplification}
+The full bound of Golowich et al.\ involves per-layer spectral
+norms and $(2,1)$-norms:
+\begin{equation}
+  \Rad_N(\mathcal{H}_B) \;\le\;
+  \frac{\bigl(\prod_{l=1}^{L}\norm{W_l}_\sigma\bigr)
+    \cdot X_{\max} \cdot \sqrt{\sum_{l=1}^{L}
+    \bigl(\norm{W_l}_{2,1}/\norm{W_l}_\sigma\bigr)^{2/3}}}
+  {\sqrt{N}}.
+\end{equation}
+Bound~\eqref{eq:rademacher_nn} follows from
+$\norm{W_l}_{2,1}/\norm{W_l}_\sigma \le \sqrt{d}$.
+This preserves the asymptotic order $O(1/\sqrt{N})$ but may be loose
+for structurally sparse weight matrices.
+\end{remark}
+
+\begin{lemma}[Contraction lemma --- Ledoux \& Talagrand
+\cite{Ledoux1991}]
+\label{lema:contraccion}
+Let $\phi: \R \to \R$ be $L_\phi$-Lipschitz with $\phi(0) = 0$,
+and let $\mathcal{G}$ be a function class.
+Then:
+\begin{equation}
+  \Rad_N(\phi \circ \mathcal{G})
+  \;\le\; L_\phi \cdot \Rad_N(\mathcal{G}).
+\end{equation}
+\end{lemma}
+
+\begin{lemma}[Uniform generalization bound --- Bartlett \& Mendelson
+\cite{Bartlett2002}]
+\label{lema:generalizacion}
+Let $\mathcal{G}$ be a function class with values in $[0, M]$.
+Then, with probability at least $1 - \delta$ over $S$:
+\begin{equation}
+  \sup_{g \in \mathcal{G}}
+  \abs{\E[g] - \hat{\E}_N[g]}
+  \;\le\; 2\Rad_N(\mathcal{G})
+  + 3M\sqrt{\frac{\log(2/\delta)}{2N}}.
+  \label{eq:generalizacion}
+\end{equation}
+\end{lemma}
+
+%% =========================================================
+\section{Main Theorem}
+\label{sec:main}
+%% =========================================================
+
+\begin{theorem}[Generalization bound reduction by implicit model]
+\label{teo:principal}
+Under Assumptions~\ref{hip:F}--\ref{hip:reduccion}, let
+$\hat{\theta}_{\mathrm{exp}} \in \mathcal{H}_{B_{\mathrm{exp}}}$ and
+$\hat{\theta}_{\mathrm{imp}} \in \mathcal{H}_{B_{\mathrm{imp}}}$ be
+the empirical risk minimizers of
+$\hat{\mathcal{L}}_{\mathrm{exp}}$ and
+$\hat{\mathcal{L}}_{\mathrm{imp}}$ respectively.
+Then, with probability at least $1 - \delta$:
+
+\medskip
+
+\textbf{(I) Explicit bound:}
+\begin{equation}
+  \mathcal{L}_{\mathrm{exp}}(\hat{\theta}_{\mathrm{exp}})
+  \;\le\; \hat{\mathcal{L}}_{\mathrm{exp}}(\hat{\theta}_{\mathrm{exp}})
+  + \frac{4 M_{\mathrm{exp}} \cdot B_{\mathrm{exp}} \cdot X_{\max}
+    \cdot \sqrt{2L\log(2d)}}{\sqrt{N}}
+  + 3 M_{\mathrm{exp}}^2
+    \sqrt{\frac{\log(2/\delta)}{2N}}
+  \label{eq:cota_exp}
+\end{equation}
+
+\textbf{(II) Implicit bound:}
+\begin{equation}
+  \mathcal{L}_{\mathrm{imp}}(\hat{\theta}_{\mathrm{imp}})
+  \;\le\; \hat{\mathcal{L}}_{\mathrm{imp}}(\hat{\theta}_{\mathrm{imp}})
+  + \frac{4 \beta \cdot M_{\mathrm{imp}} \cdot B_{\mathrm{imp}}
+    \cdot X_{\max} \cdot \sqrt{2L\log(2d)}}{\sqrt{N}}
+  + 3 M_{\mathrm{imp}}^2
+    \sqrt{\frac{\log(2/\delta)}{2N}}
+  \label{eq:cota_imp}
+\end{equation}
+
+\noindent where
+$M_{\mathrm{exp}} = \sup_{(x,\theta)} |y - \MLP(x;\theta)|$ and
+$M_{\mathrm{imp}} = \sup_{(x,\theta)} |F(x,y,\MLP(x;\theta))|$ are
+range bounds over $\mathcal{H}_{B_{\mathrm{exp}}}$ and
+$\mathcal{H}_{B_{\mathrm{imp}}}$ respectively.
+\end{theorem}
+
+\begin{proof}
+\textbf{Part~(I): Explicit bound.}
+
+Define the loss class:
+\begin{equation}
+  \mathcal{G}_{\mathrm{exp}} = \{(x,y) \mapsto (y - g(x))^2
+  : g \in \mathcal{H}_{B_{\mathrm{exp}}}\}.
+\end{equation}
+
+\emph{Step~1: Lipschitz composition.}
+The function $\phi(t) = t^2$ is $2M_{\mathrm{exp}}$-Lipschitz on
+$[-M_{\mathrm{exp}}, M_{\mathrm{exp}}]$.
+The inner class
+$\tilde{\mathcal{G}}_{\mathrm{exp}} = \{(x,y) \mapsto y - g(x)
+: g \in \mathcal{H}_{B_{\mathrm{exp}}}\}$
+satisfies
+$\Rad_N(\tilde{\mathcal{G}}_{\mathrm{exp}})
+= \Rad_N(\mathcal{H}_{B_{\mathrm{exp}}})$
+(translation by $y$ does not affect Rademacher complexity, since $y$
+is fixed with respect to the hypothesis class).
+
+To apply the contraction lemma (Lemma~\ref{lema:contraccion}), we
+note that $\phi(t) = t^2$ does not satisfy $\phi(0) = 0$.
+However, the Rademacher complexity is invariant under constant shifts
+of the function class: for any constant $c$,
+$\Rad_N(\{g + c : g \in \mathcal{G}\}) = \Rad_N(\mathcal{G})$.
+Since $(y - g(x))^2 = \psi(y - g(x))$ where $\psi(t) = t^2$ and
+$\psi(0) = 0$, the contraction lemma applies to the centered class
+$\tilde{\mathcal{G}}_{\mathrm{exp}}$ with Lipschitz constant
+$2M_{\mathrm{exp}}$.
+Therefore:
+\begin{equation}
+  \Rad_N(\mathcal{G}_{\mathrm{exp}})
+  \;\le\; 2M_{\mathrm{exp}} \cdot
+  \Rad_N(\mathcal{H}_{B_{\mathrm{exp}}}).
+\end{equation}
+
+\emph{Step~2: Rademacher substitution.}
+By Lemma~\ref{lema:rad}:
+\begin{equation}
+  \Rad_N(\mathcal{G}_{\mathrm{exp}})
+  \;\le\; \frac{2 M_{\mathrm{exp}} \cdot B_{\mathrm{exp}} \cdot
+    X_{\max} \cdot \sqrt{2L\log(2d)}}{\sqrt{N}}.
+\end{equation}
+
+\emph{Step~3: Generalization bound.}
+Applying Lemma~\ref{lema:generalizacion} yields~\eqref{eq:cota_exp}.
+\hfill $\square_{\mathrm{I}}$
+
+\medskip
+
+\textbf{Part~(II): Implicit bound.}
+
+Define:
+\begin{equation}
+  \mathcal{G}_{\mathrm{imp}} = \{(x,y) \mapsto F(x,y,g(x))^2
+  : g \in \mathcal{H}_{B_{\mathrm{imp}}}\}.
+\end{equation}
+
+\emph{Step~1: Lipschitz composition with centering correction.}
+The composition has two layers:
+\begin{enumerate}[label=(\roman*)]
+  \item $z \mapsto F(x,y,z)$ is $\beta$-Lipschitz in $z$ by
+    Assumption~\ref{hip:F}(b).
+  \item $t \mapsto t^2$ is $2M_{\mathrm{imp}}$-Lipschitz on
+    $[-M_{\mathrm{imp}}, M_{\mathrm{imp}}]$.
+\end{enumerate}
+
+The contraction lemma (Lemma~\ref{lema:contraccion}) requires the
+Lipschitz map to satisfy $\phi(0) = 0$.
+The map $z \mapsto F(x,y,z)$ does not satisfy $F(x,y,0) = 0$ in
+general.
+We handle this by defining the centered map
+$\tilde{F}_{x,y}(z) := F(x,y,z) - F(x,y,0)$, which satisfies
+$\tilde{F}_{x,y}(0) = 0$ and is $\beta$-Lipschitz (same constant).
+Since Rademacher complexity is invariant under addition of a function
+that depends only on the data $(x,y)$ and not on the hypothesis $g$:
+\begin{equation}
+  \Rad_N\bigl(\{(x,y) \mapsto F(x,y,g(x))
+    : g \in \mathcal{H}_{B_{\mathrm{imp}}}\}\bigr)
+  = \Rad_N\bigl(\{(x,y) \mapsto \tilde{F}_{x,y}(g(x))
+    : g \in \mathcal{H}_{B_{\mathrm{imp}}}\}\bigr).
+\end{equation}
+
+We now apply the contraction lemma twice.
+First, to $\tilde{F}_{x,y}$ (which is $\beta$-Lipschitz with
+$\tilde{F}_{x,y}(0) = 0$):
+\begin{equation}
+  \Rad_N\bigl(\{\tilde{F}_{x,y} \circ g
+    : g \in \mathcal{H}_{B_{\mathrm{imp}}}\}\bigr)
+  \;\le\; \beta \cdot \Rad_N(\mathcal{H}_{B_{\mathrm{imp}}}).
+\end{equation}
+
+Second, the squaring map $\psi(t) = t^2$ satisfies $\psi(0) = 0$
+and is $2M_{\mathrm{imp}}$-Lipschitz on the relevant range.
+Therefore:
+\begin{equation}
+  \Rad_N(\mathcal{G}_{\mathrm{imp}})
+  \;\le\; 2M_{\mathrm{imp}} \cdot \beta \cdot
+  \Rad_N(\mathcal{H}_{B_{\mathrm{imp}}}).
+  \label{eq:rad_imp}
+\end{equation}
+
+\emph{Step~2: Rademacher substitution.}
+By Lemma~\ref{lema:rad}:
+\begin{equation}
+  \Rad_N(\mathcal{G}_{\mathrm{imp}})
+  \;\le\; \frac{2 \beta \cdot M_{\mathrm{imp}} \cdot
+    B_{\mathrm{imp}} \cdot X_{\max} \cdot
+    \sqrt{2L\log(2d)}}{\sqrt{N}}.
+\end{equation}
+
+\emph{Step~3: Generalization bound.}
+Applying Lemma~\ref{lema:generalizacion}
+yields~\eqref{eq:cota_imp}.
+\hfill $\square_{\mathrm{II}}$
+\end{proof}
+
+\begin{remark}[Role of $\beta$]
+\label{rem:beta}
+The Lipschitz constant $\beta$ of $F$ in $z$ appears as an
+amplification factor in the implicit bound~\eqref{eq:cota_imp}.
+This is not an artifact of the proof: it reflects the genuine cost
+of passing through the nonlinear map $F$.
+If $F$ is ``rigid'' ($\beta$ large), the benefit of the reduced
+path norm $B_{\mathrm{imp}} < B_{\mathrm{exp}}$ may be offset by
+the amplification.
+The gain condition is made precise in Corollary~\ref{cor:datos}.
+\end{remark}
+
+%% =========================================================
+\section{Sample Complexity Comparison}
+\label{sec:sample}
+%% =========================================================
+
+\begin{corollary}[Sample complexity reduction]
+\label{cor:datos}
+Fix a generalization gap $\varepsilon > 0$ and confidence
+$1 - \delta$.
+The number of training samples required to achieve the generalization
+gap $\varepsilon$ is, up to logarithmic factors:
+
+\textbf{Explicit:}
+\begin{equation}
+  N_{\mathrm{exp}} = O\!\left(
+    \frac{M_{\mathrm{exp}}^2 \cdot B_{\mathrm{exp}}^2 \cdot
+      X_{\max}^2 \cdot L\log(d)}{\varepsilon^2}
+  \right).
+  \label{eq:N_exp}
+\end{equation}
+
+\textbf{Implicit:}
+\begin{equation}
+  N_{\mathrm{imp}} = O\!\left(
+    \frac{\beta^2 \cdot M_{\mathrm{imp}}^2 \cdot B_{\mathrm{imp}}^2
+      \cdot X_{\max}^2 \cdot L\log(d)}{\varepsilon^2}
+  \right).
+  \label{eq:N_imp}
+\end{equation}
+
+The sample complexity ratio is:
+\begin{equation}
+  \boxed{
+    \frac{N_{\mathrm{imp}}}{N_{\mathrm{exp}}}
+    = \frac{\beta^2 \cdot M_{\mathrm{imp}}^2 \cdot
+      B_{\mathrm{imp}}^2}
+    {M_{\mathrm{exp}}^2 \cdot B_{\mathrm{exp}}^2}
+  }
+  \label{eq:ratio}
+\end{equation}
+\end{corollary}
+
+\begin{proof}
+Setting the dominant term in~\eqref{eq:cota_exp} equal to
+$\varepsilon$ and solving for $N$ yields~\eqref{eq:N_exp}.
+The procedure is identical for~\eqref{eq:N_imp}, with the additional
+factor $\beta$ from the Lipschitz constant of $F$.
+\end{proof}
+
+\begin{remark}[Gain condition]
+\label{rem:gain}
+The implicit model achieves lower sample complexity when:
+\begin{equation}
+  \beta^2 \cdot M_{\mathrm{imp}}^2 \cdot B_{\mathrm{imp}}^2
+  \;<\; M_{\mathrm{exp}}^2 \cdot B_{\mathrm{exp}}^2.
+  \label{eq:condicion_reduccion}
+\end{equation}
+\end{remark}
+
+\begin{definition}[Structural content of $F$]
+\label{def:structural_content}
+The structural content of $F$ is:
+\begin{equation}
+  \mathcal{S}(F) \;:=\; \frac{B_{\mathrm{exp}}}{B_{\mathrm{imp}}},
+\end{equation}
+with $\mathcal{S}(F) > 1$ indicating that $F$ provides useful
+structural bias, and $\mathcal{S}(F) = 1$ indicating that $F$ is
+structurally empty (cf.\ Counterexample~\ref{ce:trivial}).
+The gain condition~\eqref{eq:condicion_reduccion} becomes:
+\begin{equation}
+  \mathcal{S}(F) \;>\;
+  \frac{\beta \cdot M_{\mathrm{imp}}}{M_{\mathrm{exp}}}.
+  \label{eq:condicion_S}
+\end{equation}
+\end{definition}
+
+\begin{remark}[Structural content is problem-dependent]
+\label{rem:problem_dependent}
+The structural content $\mathcal{S}(F)$ depends on the pair
+$(f^*, F)$, not on $F$ alone, since $B_{\mathrm{exp}}$ is determined
+by the unknown $f^*$.
+In practice, $\mathcal{S}(F)$ is not computable a priori.
+However, the sufficient conditions of
+Section~\ref{sec:sufficient} provide classes of problems for which
+$\mathcal{S}(F) > 1$ can be guaranteed from structural properties
+of $F$ alone.
+\end{remark}
+
+%% =========================================================
+\section{Sufficient Conditions for Complexity Reduction}
+\label{sec:sufficient}
+%% =========================================================
+
+Assumption~\ref{hip:reduccion} is the key piece.
+Under what conditions on $F$ is
+$B_{\mathrm{imp}} < B_{\mathrm{exp}}$ guaranteed?
+
+\begin{proposition}[Reduction by structural factorization]
+\label{prop:factorizacion}
+Suppose $F$ has the form:
+\begin{equation}
+  F(x, y, z) = \psi(x, y) - z,
+  \label{eq:F_factorizada}
+\end{equation}
+where $\psi: \mathcal{X} \times \R \to \R$ is a known function.
+Then $h^*(x) = \psi(x, f^*(x))$, and the Lipschitz constant is
+$\beta = 1$ (no amplification).
+
+If $\psi$ simplifies the structure of $f^*$ --- for example, if
+$f^*(x) = p(x) \cdot s(x)$ with $p$ a known polynomial and $s$ a
+smooth function of low complexity, and
+$\psi(x, y) = y / p(x)$ --- then $h^*(x) = s(x)$ and
+$B_{\mathrm{imp}} \ll B_{\mathrm{exp}}$.
+\end{proposition}
+
+\begin{proof}
+If $F(x,y,z) = \psi(x,y) - z$, then $F = 0$ implies
+$z = \psi(x,y)$.
+Evaluating at $y = f^*(x)$: $h^*(x) = \psi(x, f^*(x))$.
+The Lipschitz constant is
+$|\partial F / \partial z| = |-1| = 1$, so $\alpha = \beta = 1$.
+
+For the path norm reduction: let $f^*(x) = p(x) \cdot s(x)$ where
+$p$ is a known polynomial of degree $k$ and $s$ is smooth with slow
+variation.
+If $\psi(x,y) = y/p(x)$, then $h^*(x) = s(x)$.
+By the Barron norm characterization of network approximation
+complexity \cite{Barron1993}, the path norm required to approximate
+a function is proportional to its spectral variation:
+\begin{equation}
+  B \;\propto\; C_f
+  \;=\; \int_{\R^n} \norm{\omega} |\hat{f}(\omega)| \, d\omega.
+\end{equation}
+
+The product $f^* = p \cdot s$ corresponds to spectral convolution
+$\widehat{p \cdot s} = \hat{p} * \hat{s}$, which redistributes the
+spectral content of $s$ toward higher frequencies when $p$ is
+nonconstant.
+For polynomials of degree $k \ge 1$, the spectral measure $\hat{p}$
+involves derivatives of the Dirac delta, ensuring redistribution
+away from the origin.
+Therefore $C_{f^*} = C_{p \cdot s} \ge C_s = C_{h^*}$ under generic
+conditions on $p$, and $B_{\mathrm{imp}} \le B_{\mathrm{exp}}$.
+\end{proof}
+
+\begin{proposition}[Reduction by nonlinearity absorption]
+\label{prop:absorcion}
+Let $f^*(x) = \phi(g(x))$ where $\phi$ is a known invertible $C^1$
+nonlinearity and $g$ is unknown.
+Define:
+\begin{equation}
+  F(x, y, z) = \phi(z) - y.
+\end{equation}
+Then $h^*(x) = g(x) = \phi^{-1}(f^*(x))$, and the MLP only needs to
+learn $g$ instead of $\phi \circ g$.
+
+The Lipschitz constant is $\beta = \sup_{\mathcal{Z}} |\phi'(z)|$,
+which may be large.
+The gain condition~\eqref{eq:condicion_reduccion} is satisfied when
+the reduction in $B$ dominates the amplification by $\beta$.
+\end{proposition}
+
+\begin{proof}
+$F(x,y,z) = \phi(z) - y = 0$ implies $z = \phi^{-1}(y)$.
+At $y = f^*(x) = \phi(g(x))$:
+$h^*(x) = \phi^{-1}(\phi(g(x))) = g(x)$.
+
+For $\phi(t) = e^t$: $f^* = e^g$ and $h^* = g = \ln f^*$.
+The Barron norm of $e^g$ grows exponentially with that of $g$
+(via the Taylor expansion of the exponential and iterated spectral
+convolution), so $C_{f^*} = C_{e^g} \gg C_g = C_{h^*}$.
+
+The Lipschitz constant is
+$\beta = \sup |e^z| = e^{\sup |g|}$, which can be large.
+The gain condition is met when the path norm reduction dominates:
+$B_{\mathrm{exp}} / B_{\mathrm{imp}} > \beta \cdot
+M_{\mathrm{imp}} / M_{\mathrm{exp}}$.
+\end{proof}
+
+%% =========================================================
+\section{Counterexamples: When the Implicit Model Fails}
+\label{sec:counter}
+%% =========================================================
+
+\begin{counterexample}[$F$ without structural content]
+\label{ce:trivial}
+Let $F(x,y,z) = y - z$.
+Then $h^*(x) = f^*(x)$ and $B_{\mathrm{imp}} = B_{\mathrm{exp}}$.
+The implicit equation absorbs no complexity; the network must learn
+exactly the same function.
+The Lipschitz constant is $\beta = 1$, so there is no amplification,
+but also no gain: $\mathcal{S}(F) = 1$.
+\end{counterexample}
+
+\begin{counterexample}[$F$ that amplifies complexity]
+\label{ce:amplification}
+Let $F(x,y,z) = y - e^z$.
+Then $h^*(x) = \ln(f^*(x))$, which may have singularities if $f^*$
+vanishes, and the condition $\alpha > 0$ of Assumption~\ref{hip:F}
+fails in regions where $e^z \to 0$.
+Even when $f^* > 0$ everywhere, the Lipschitz constant
+$\beta = \sup |e^z|$ can be large in the training region, potentially
+making the implicit formulation worse than the explicit one.
+\end{counterexample}
+
+\begin{remark}[Diagnostic criterion]
+\label{rem:diagnostic}
+Not every implicit model reduces complexity.
+The structural content $\mathcal{S}(F)$ is the diagnostic:
+$\mathcal{S}(F) > 1$ is necessary, and the full gain
+condition~\eqref{eq:condicion_S} is sufficient.
+Counterexample~\ref{ce:trivial} shows $\mathcal{S} = 1$ (neutral),
+and Counterexample~\ref{ce:amplification} shows how
+the amplification factor $\beta$ can dominate even when $\mathcal{S}
+> 1$.
+\end{remark}
+
+%% =========================================================
+\section{Instantiations of the Framework}
+\label{sec:instances}
+%% =========================================================
+
+We show that two strategies for injecting structural knowledge into
+neural models are genuine instances of the general framework of
+Theorem~\ref{teo:principal}: both change the learning target from
+$f^*$ to a simpler function $h^*$.
+
+\subsection{Physics-informed variable transformations}
+\label{sec:variable_transform}
+
+Consider a dynamical system whose solutions are known to exhibit a
+specific qualitative structure: oscillatory behavior, exponential
+decay, or polynomial modulation.
+In each case, the practitioner possesses structural knowledge about
+$f^*$ that can be absorbed into $F$, genuinely simplifying the
+learning target.
+
+\textbf{Case 1: Exponential envelope absorption.}
+If the solution is known to have the form
+$f^*(x) = g(x) \cdot e^{-\lambda x}$ where $\lambda > 0$ is known
+(e.g., a dissipative system with known damping rate) and $g$ is an
+unknown modulation, define:
+\begin{equation}
+  F(x, y, z) = y \cdot e^{\lambda x} - z.
+\end{equation}
+Then $h^*(x) = g(x)$ and $\beta = 1$.
+The network learns only the slowly varying modulation $g$ instead
+of the oscillatory, decaying product $f^* = g \cdot e^{-\lambda x}$.
+Since the exponential envelope concentrates spectral energy at high
+frequencies, removing it reduces the Barron norm:
+$C_{h^*} = C_g \ll C_{g \cdot e^{-\lambda x}} = C_{f^*}$.
+
+This explains why Laguerre-type networks (using $t^n e^{-\lambda t}$
+as activation functions) outperform generic MLPs for damped systems:
+the activation absorbs the exponential structure, and the weights
+modulate a simpler residual.
+
+\textbf{Case 2: Polynomial factor extraction.}
+If $f^*(x) = p(x) \cdot s(x)$ where $p$ is a known polynomial
+(e.g., from a Taylor expansion of the nonlinearity at a known
+equilibrium) and $s$ is unknown but smooth, define:
+\begin{equation}
+  F(x, y, z) = y / p(x) - z.
+\end{equation}
+Then $h^*(x) = s(x)$ and $\beta = 1$.
+This is a direct instance of Proposition~\ref{prop:factorizacion}.
+
+\textbf{Case 3: Frequency demodulation.}
+If the solution is known to oscillate at a dominant frequency
+$\omega$ (e.g., an AC circuit, a mechanical resonator), the signal
+can be decomposed as
+$f^*(x) = A(x)\cos(\omega x) + B(x)\sin(\omega x)$
+where $A, B$ are slowly varying envelopes.
+Defining two implicit models:
+\begin{align}
+  F_c(x, y, z) &= \langle y, \cos(\omega \cdot)\rangle_{\mathrm{local}} - z, \\
+  F_s(x, y, z) &= \langle y, \sin(\omega \cdot)\rangle_{\mathrm{local}} - z,
+\end{align}
+where $\langle\cdot,\cdot\rangle_{\mathrm{local}}$ denotes a
+windowed inner product, the learning targets become $A$ and $B$
+respectively, each with $\beta = 1$.
+
+This is the mechanism underlying SIREN \cite{Sitzmann2020}:
+the sinusoidal activation encodes the carrier frequency, and the
+network weights learn the slowly varying modulation.
+The framework explains why SIREN outperforms generic MLPs for
+wave-like dynamics: the activation absorbs the dominant oscillatory
+structure (reducing $B_{\mathrm{imp}}$) without amplification
+($\beta = 1$).
+
+\begin{remark}[Common structure of the three cases]
+\label{rem:common_structure}
+All three cases share the form $F(x,y,z) = \psi(x,y) - z$ with
+$\beta = 1$.
+The known structure (exponential envelope, polynomial factor, carrier
+frequency) is absorbed by $\psi$, reducing the learning target to
+a simpler modulation.
+The structural content is $\mathcal{S}(F) = B_{\mathrm{exp}} /
+B_{\mathrm{imp}} > 1$, and the gain condition~\eqref{eq:condicion_S}
+reduces to $\mathcal{S}(F) > M_{\mathrm{imp}} / M_{\mathrm{exp}}$,
+which is satisfied whenever the modulation has comparable range to
+the original signal.
+\end{remark}
+
+\subsection{Homotopy Analysis Method}
+\label{sec:ham}
+
+The Homotopy Analysis Method (HAM) of Liao \cite{Liao2003, Liao2012}
+provides a different and deeper instance of the framework.
+Rather than absorbing a single known structural feature (an
+exponential, a polynomial, a frequency), the HAM systematically
+decomposes the \emph{entire} solution of a nonlinear ODE
+$\mathcal{N}[u] = 0$ into a series of linear corrections.
+
+The deformation is governed by the homotopy equation:
+\begin{equation}
+  (1-q)\,\mathcal{L}[u(t;q) - u_0(t)]
+  = q\,\hbar\,H(t)\,\mathcal{N}[u(t;q)],
+  \label{eq:HAM}
+\end{equation}
+where $\mathcal{L}$ is a chosen auxiliary linear operator,
+$\hbar \ne 0$ is a convergence-control parameter,
+$H(t)$ is an auxiliary function, and $q \in [0,1]$ is the homotopy
+parameter.
+Setting $q = 0$ gives $u(t;0) = u_0(t)$; setting $q = 1$ gives
+$\mathcal{N}[u(t;1)] = 0$, the original equation.
+
+The solution expands as:
+\begin{equation}
+  u(t;q) = u_0(t) + \sum_{k=1}^{\infty} u_k(t)\,q^k,
+\end{equation}
+where each $u_k$ satisfies a \emph{linear} equation with forcing
+terms depending on $u_0, \ldots, u_{k-1}$.
+
+In the language of the present framework:
+the target function $f^*$ is the solution of $\mathcal{N}[u] = 0$
+(potentially highly complex);
+the function $h^*$ that the MLP must learn is the residual
+correction beyond the $K$-th order HAM approximation:
+$h^*(t) = u(t;1) - \sum_{k=0}^{K-1} u_k(t)$.
+Since the $K$ leading terms are computed analytically by solving
+linear equations, only the residual $h^*$ requires neural
+approximation.
+
+\begin{proposition}[HAM complexity reduction --- conditional]
+\label{prop:HAM}
+If the HAM series converges geometrically with ratio $\rho < 1$
+(i.e., $\norm{u_k}_\infty \le C\rho^k$), and the Barron norm of
+$h^*_K := u^* - \sum_{k=0}^{K-1} u_k$ satisfies
+$C_{h^*_K} \le C' \rho^K$ for some constant $C'$, then the path norm
+required to approximate $h^*_K$ satisfies:
+\begin{equation}
+  B_{\mathrm{imp}} = O(\rho^K) \ll B_{\mathrm{exp}}
+\end{equation}
+for $K$ sufficiently large, and the sample complexity ratio
+decreases exponentially with the truncation order:
+\begin{equation}
+  \frac{N_{\mathrm{imp}}}{N_{\mathrm{exp}}}
+  = O(\rho^{2K}).
+\end{equation}
+\end{proposition}
+
+\begin{remark}[Scope of Proposition~\ref{prop:HAM}]
+\label{rem:ham_scope}
+The condition $C_{h^*_K} \le C'\rho^K$ is an additional regularity
+assumption beyond $\norm{u_k}_\infty \le C\rho^k$.
+The supremum norm and the Barron norm are not equivalent: a function
+with small $\norm{\cdot}_\infty$ may have high spectral variation
+(e.g., small-amplitude but highly oscillatory functions).
+However, for the HAM residuals $h^*_K$, which are solutions of
+\emph{linear} ODEs with exponentially decaying forcing, the spectral
+content is controlled by the forcing spectrum, which itself decays.
+A rigorous proof of $C_{h^*_K} = O(\rho^K)$ for specific operator
+classes (e.g., $\mathcal{L}[u] = \ddot{u} + \omega^2 u$) requires
+explicit Fourier analysis of the HAM recurrence and is left to
+future work.
+The proposition is stated conditionally on this spectral decay, which
+is expected to hold for the standard classes of HAM-solvable ODEs.
+\end{remark}
+
+\begin{remark}[HAM vs.\ variable transformations]
+\label{rem:ham_vs_vt}
+The variable transformations of Section~\ref{sec:variable_transform}
+require the practitioner to identify a single structural feature
+(exponential, polynomial, frequency) and encode it manually in $F$.
+The HAM provides a \emph{systematic} procedure: given only the
+operator $\mathcal{N}$ and an auxiliary linear operator
+$\mathcal{L}$, it generates a sequence of linear corrections that
+progressively absorb the complexity of $f^*$.
+No manual identification of structural features is required ---
+the method constructs them automatically from the physics.
+The price is the computation of $K$ terms of the homotopy series,
+but the reward is an exponential reduction in sample complexity with
+increasing $K$.
+\end{remark}
+
+%% =========================================================
+\section{Interpretation: Structural Inductive Bias and Effective
+  Hypothesis Space Reduction}
+\label{sec:bias}
+%% =========================================================
+
+\subsection{Structural inductive bias}
+
+In the explicit formulation $y = \MLP(x;\theta)$, the network must
+discover \emph{all} structure of $f^*$ from data.
+The only inductive bias is architectural (depth, width, activation).
+
+In the implicit formulation $F(x, y, \MLP(x;\theta)) = 0$, the
+function $F$ acts as an \emph{external structural inductive bias}:
+it encodes prior knowledge about the relationship between $x$ and $y$
+that does not need to be learned.
+This knowledge may come from physical laws, geometric constraints,
+symmetries, or analytical decompositions (such as the HAM series).
+
+The distinction is analogous to the difference between a
+noninformative and an informative prior in Bayesian inference: the
+informative prior (when correct) concentrates the posterior more
+rapidly, requiring fewer observations.
+In our framework, the ``prior'' is the structure of $F$, and the
+``concentration of the posterior'' manifests as reduction of the
+Rademacher complexity.
+
+\subsection{Effective hypothesis space reduction}
+
+The nominal hypothesis class $\mathcal{H}_B$ is the same in both
+formulations (same network, same weights).
+What changes is the \emph{effective hypothesis space}: the subset of
+$\mathcal{H}_B$ relevant to the problem.
+
+In the explicit formulation, the network must cover all functions
+$\varepsilon_0$-close to $f^*$:
+\begin{equation}
+  \mathcal{H}_{\mathrm{exp}}^{\mathrm{eff}}
+  = \{g \in \mathcal{H}_{B_{\mathrm{exp}}} :
+    \sup_x |g(x) - f^*(x)| \le \varepsilon_0\}.
+\end{equation}
+
+In the implicit formulation, the network only needs to cover
+functions $\varepsilon_0$-close to $h^*$, which is simpler:
+\begin{equation}
+  \mathcal{H}_{\mathrm{imp}}^{\mathrm{eff}}
+  = \{g \in \mathcal{H}_{B_{\mathrm{imp}}} :
+    \sup_x |g(x) - h^*(x)| \le \varepsilon_0\}.
+\end{equation}
+
+Since $B_{\mathrm{imp}} < B_{\mathrm{exp}}$, the effective implicit
+space has lower ``volume'' in the sense of Rademacher complexity.
+The network retains its expressive capacity, but the implicit model
+\emph{restricts the search} to a smaller region of parameter space.
+
+\begin{remark}[Computational Occam principle]
+The implicit formulation implements a version of Occam's principle:
+among all networks satisfying
+$F(x, y, \MLP(x;\theta)) = 0$, those with smaller path norm $B$
+generalize better.
+The function $F$ acts as a filter that eliminates hypotheses
+incompatible with the known structure, reducing effective complexity
+without reducing the network's expressive capacity.
+\end{remark}
+
+\begin{remark}[Connection to PAC-Bayes]
+The effective space reduction argument is compatible with the
+PAC-Bayes framework \cite{McAllester1999}, where the generalization
+bound depends on the KL divergence between posterior and prior
+distributions over $\theta$.
+The function $F$ acts as a deterministic constraint that concentrates
+the posterior mass on
+$\Theta^*_{\mathrm{imp}} \subset \Theta$, reducing the effective KL
+divergence.
+Note that $F$ is not a prior in the strict sense (it is not a
+probability distribution over $\theta$), but a deterministic
+constraint that reduces the effective support.
+The formalization of this connection within PAC-Bayes is left as
+future work.
+\end{remark}
+
+\subsection{Why PINNs do not fit this framework}
+\label{sec:why_not_pinns}
+
+It is instructive to examine why the PINN approach
+\cite{Raissi2019} does \emph{not} constitute an instance of the
+present framework, despite sharing the goal of injecting physical
+knowledge into neural models.
+
+In a standard PINN, the network $u_\theta(x)$ approximates the PDE
+solution $f^*$ \emph{directly}, and the loss function includes both
+a data-fitting term and a PDE residual:
+$\mathcal{L} = \mathcal{L}_{\mathrm{data}} +
+\lambda\,\mathcal{L}_{\mathrm{PDE}}$.
+The PDE term constrains the optimization landscape (it penalizes
+networks incompatible with the governing equation), but the learning
+target remains $f^*$ itself.
+In the notation of this paper: $h^* = f^*$, so
+$B_{\mathrm{imp}} = B_{\mathrm{exp}}$ and $\mathcal{S}(F) = 1$.
+
+The PINN mechanism is \emph{regularization}: it reduces the
+effective search space during optimization by penalizing physically
+inconsistent solutions.
+The mechanism formalized in Theorem~\ref{teo:principal} is
+\emph{target transformation}: it changes what the network must
+learn, replacing $f^*$ with a genuinely simpler function $h^*$.
+
+This distinction has a precise consequence.
+PINN-type regularization may improve optimization convergence and
+reduce overfitting, but it does not change the Rademacher complexity
+of the hypothesis class (the class of functions the network
+\emph{can} represent is unchanged).
+Target transformation reduces the Rademacher complexity because the
+approximation target itself is simpler (lower Barron norm, lower path
+norm).
+
+The two mechanisms are complementary: one could use a target
+transformation (absorbing known structure in $F$) together with a
+PINN-style residual loss on the transformed problem, obtaining the
+benefits of both.
+
+%% =========================================================
+\section{Discussion and Future Directions}
+\label{sec:discussion}
+%% =========================================================
+
+\subsection{What this paper proves}
+
+Theorem~\ref{teo:principal} establishes that, conditional on
+Assumption~\ref{hip:reduccion}, the implicit model
+$F(x, y, \MLP(x;\theta)) = 0$ achieves a tighter generalization
+bound than the explicit model $y = \MLP(x;\theta)$.
+Corollary~\ref{cor:datos} translates this into an explicit sample
+complexity ratio.
+The gain condition~\eqref{eq:condicion_S} is a verifiable criterion
+that balances the path norm reduction against the Lipschitz
+amplification introduced by $F$.
+
+The result is constructive: the hypotheses are stated explicitly,
+the conditions are verifiable for specific choices of $F$, and the
+counterexamples show that the result is tight (not every implicit
+model helps).
+
+\subsection{What this paper does not prove}
+
+The paper does not resolve two important questions:
+
+\textbf{(i) When does Assumption~\ref{hip:reduccion} hold?}
+The sufficient conditions of Section~\ref{sec:sufficient} cover
+two important classes (structural factorization and nonlinearity
+absorption), but do not exhaust all possibilities.
+A general characterization of which functions $F$ yield
+$B_{\mathrm{imp}} < B_{\mathrm{exp}}$ for a given class of target
+functions would require a deeper analysis of the interaction between
+the spectral structure of $f^*$ and the transformation induced
+by $F$.
+
+\textbf{(ii) Why do certain activation functions outperform others
+for specific dynamical classes?}
+The framework shows that structural knowledge in $F$ reduces sample
+complexity, but does not explain at a deeper level why
+$\sin(\omega t)$ is the ``right'' activation for oscillatory systems
+or $e^{-\lambda t}$ for damped systems --- beyond the observation
+that they lead to lower $B_{\mathrm{imp}}$.
+
+\subsection{Toward autosimilar function spaces}
+
+Both questions point toward a topological framework that we outline
+here and defer to a companion paper.
+
+The key observation is that the history of function approximation
+can be read as a sequence of discoveries of \emph{autosimilar bases},
+each adapted to a different class of natural structure:
+Fourier series for oscillatory dynamics,
+Laguerre functions for damped systems,
+Chebyshev polynomials for compact-domain approximation,
+Gaussian RBFs for spatially localized problems,
+and wavelet bases for multi-scale phenomena.
+
+Each of these bases is the orbit of a single \emph{primitive
+function} under a family of contractive transformations ---
+precisely the structure of an iterated function system (IFS) in the
+sense of Hutchinson \cite{Hutchinson1981}.
+The Homotopy Analysis Method \cite{Liao2003, Liao2012} provides the
+missing link: it constructs the solution of a nonlinear ODE as the
+limit of an orbit $\{v_k = \Gamma_\hbar^k[u_0]\}$ generated by a
+contractive operator, where the primitive $u_0$ is the homogeneous
+solution of the auxiliary linear operator $\mathcal{L}$.
+
+Three consequences follow:
+\begin{enumerate}
+  \item The exact solution $u^*$ is the attractor of the IFS, not an
+    external target.
+    Approximation is an intrinsic property of the space the solution
+    inhabits, not an operation imposed from outside.
+  \item Every HAM scheme defines a neural architecture whose
+    activation function is $u_0$ and whose basis is generated by the
+    HAM contraction.
+    Conversely, every neural architecture whose activation is the
+    homogeneous solution of some $\mathcal{L}$ is an instance of a
+    HAM scheme.
+  \item The canonical neural architectures (SIREN, RBF, Chebyshev,
+    wavelet networks) are the neural counterparts of the canonical
+    HAM operators.
+\end{enumerate}
+
+These claims require precise definitions of autosimilar function
+spaces, contractivity conditions on $\Gamma_\hbar$, and a formal
+bridge theorem connecting HAM bases to neural architectures.
+Their development and proof constitute the subject of a companion
+paper \cite{Rodrigo2026companion}, in which the topological
+framework provides the structural explanation for \emph{why}
+Assumption~\ref{hip:reduccion} holds for physics-informed
+architectures, complementing the statistical guarantee established
+here.
+
+%% =========================================================
+\section{Summary of Results}
+\label{sec:summary}
+%% =========================================================
+
+\begin{center}
+\renewcommand{\arraystretch}{1.5}
+\begin{tabular}{lc}
+  \toprule
+  \textbf{Result} & \textbf{Equation} \\
+  \midrule
+  Explicit generalization bound &
+  $O\!\left(\dfrac{M_{\mathrm{exp}}\, B_{\mathrm{exp}}\, X_{\max}
+    \sqrt{L\log d}}{\sqrt{N}}\right)$ \\[8pt]
+  Implicit generalization bound &
+  $O\!\left(\dfrac{\beta\, M_{\mathrm{imp}}\, B_{\mathrm{imp}}\,
+    X_{\max} \sqrt{L\log d}}{\sqrt{N}}\right)$ \\[8pt]
+  Sample complexity ratio &
+  $\dfrac{\beta^2 M_{\mathrm{imp}}^2 B_{\mathrm{imp}}^2}
+    {M_{\mathrm{exp}}^2 B_{\mathrm{exp}}^2}$ \\[8pt]
+  Structural content $\mathcal{S}(F)$ &
+  $B_{\mathrm{exp}} / B_{\mathrm{imp}}$ \\[4pt]
+  Gain condition &
+  $\mathcal{S}(F) > \beta \cdot M_{\mathrm{imp}} / M_{\mathrm{exp}}$
+  \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+%% =========================================================
+\section{Conclusions}
+\label{sec:conclusions}
+%% =========================================================
+
+We have established that implicit neural models with structural
+inductive bias achieve tighter generalization bounds than explicit
+models, under quantitative conditions that balance the path norm
+reduction against the Lipschitz amplification introduced by the
+implicit function $F$.
+
+The essential mechanism is \emph{target transformation}: the
+implicit function $F$ changes the learning target from the original
+$f^*$ to a simpler residual $h^*$, reducing the intrinsic
+approximation complexity.
+This mechanism is fundamentally different from the regularization
+approach of PINNs, which constrains the optimization landscape but
+does not change the learning target.
+
+Two instantiations have been identified:
+\begin{enumerate}
+  \item \textbf{Physics-informed variable transformations}, where
+    known structural features (exponential envelopes, polynomial
+    factors, carrier frequencies) are absorbed by $F$ with
+    $\beta = 1$ and maximal structural content.
+  \item \textbf{Homotopy Analysis Method decompositions}, where the
+    HAM series provides a systematic decomposition of the target
+    function into linear corrections of geometrically decreasing
+    complexity, requiring no manual identification of structural
+    features.
+\end{enumerate}
+
+The practical consequence is a principled criterion for evaluating
+whether a given implicit formulation will outperform the explicit
+baseline: compute the structural content $\mathcal{S}(F)$ and verify
+the gain condition $\mathcal{S}(F) > \beta \cdot M_{\mathrm{imp}} /
+M_{\mathrm{exp}}$.
+
+The deeper question --- \emph{why} certain bases are intrinsically
+adapted to certain dynamics --- requires a topological framework
+based on autosimilar function spaces and the bridge between HAM and
+neural architectures, to be developed in a companion paper.
+
+\section*{Declaration of competing interest}
+The author declares no competing interests.
+
+\section*{Acknowledgments}
+This work was supported by CONICET and Universidad Nacional de San
+Juan, Argentina.
+
+\bibliographystyle{plain}
+\begin{thebibliography}{99}
+
+\bibitem{Cybenko1989}
+G.~Cybenko,
+Approximation by superpositions of a sigmoidal function,
+\emph{Math.\ Control Signals Syst.} 2~(4) (1989) 303--314.
+
+\bibitem{Hornik1991}
+K.~Hornik,
+Approximation capabilities of multilayer feedforward networks,
+\emph{Neural Netw.} 4~(2) (1991) 251--257.
+
+\bibitem{Funahashi1989}
+K.-I.~Funahashi,
+On the approximate realization of continuous mappings by neural
+networks,
+\emph{Neural Netw.} 2~(3) (1989) 183--192.
+
+\bibitem{Barron1993}
+A.~R.~Barron,
+Universal approximation bounds for superpositions of a sigmoidal
+function,
+\emph{IEEE Trans.\ Inform.\ Theory} 39~(3) (1993) 930--945.
+
+\bibitem{Bartlett2002}
+P.~L.~Bartlett, S.~Mendelson,
+Rademacher and Gaussian complexities: risk bounds and structural
+results,
+\emph{J.~Mach.\ Learn.\ Res.} 3 (2002) 463--482.
+
+\bibitem{Golowich2018}
+N.~Golowich, A.~Rakhlin, O.~Shamir,
+Size-independent sample complexity of neural networks,
+in: \emph{Proc.\ COLT}, 2018, pp.~297--299.
+
+\bibitem{Ledoux1991}
+M.~Ledoux, M.~Talagrand,
+\emph{Probability in Banach Spaces}, Springer, 1991.
+
+\bibitem{Neyshabur2015}
+B.~Neyshabur, R.~Tomioka, N.~Srebro,
+Norm-based capacity control in neural networks,
+in: \emph{Proc.\ COLT}, 2015.
+
+\bibitem{Raissi2019}
+M.~Raissi, P.~Perdikaris, G.~E.~Karniadakis,
+Physics-informed neural networks: a deep learning framework for
+solving forward and inverse problems involving nonlinear partial
+differential equations,
+\emph{J.~Comput.\ Phys.} 378 (2019) 686--707.
+
+\bibitem{Chen2018}
+R.~T.~Q.~Chen, Y.~Rubanova, J.~Bettencourt, D.~Duvenaud,
+Neural ordinary differential equations,
+in: \emph{Adv.\ Neural Inform.\ Process.\ Syst.}, vol.~31, 2018.
+
+\bibitem{Bai2019}
+S.~Bai, J.~Z.~Kolter, V.~Koltun,
+Deep equilibrium models,
+in: \emph{Adv.\ Neural Inform.\ Process.\ Syst.}, vol.~32, 2019.
+
+\bibitem{Sitzmann2020}
+V.~Sitzmann, J.~N.~P.~Martel, A.~W.~Bergman, D.~B.~Lindell,
+G.~Wetzstein,
+Implicit neural representations with periodic activation functions,
+in: \emph{Adv.\ Neural Inform.\ Process.\ Syst.}, vol.~33, 2020,
+pp.~7462--7473.
+
+\bibitem{Liao2003}
+S.-J.~Liao,
+\emph{Beyond Perturbation: Introduction to the Homotopy Analysis
+Method}, Chapman \& Hall/CRC, 2003.
+
+\bibitem{Liao2012}
+S.-J.~Liao,
+\emph{Homotopy Analysis Method in Nonlinear Differential Equations},
+Springer, 2012.
+
+\bibitem{Hutchinson1981}
+J.~E.~Hutchinson,
+Fractals and self-similarity,
+\emph{Indiana Univ.\ Math.\ J.} 30~(5) (1981) 713--747.
+
+\bibitem{Vapnik1995}
+V.~N.~Vapnik,
+\emph{The Nature of Statistical Learning Theory}, Springer, 1995.
+
+\bibitem{Mitchell1980}
+T.~M.~Mitchell,
+The need for biases in learning generalizations,
+Technical Report CBM-TR-117, Rutgers University, 1980.
+
+\bibitem{McAllester1999}
+D.~A.~McAllester,
+PAC-Bayesian model averaging,
+in: \emph{Proc.\ COLT}, 1999, pp.~164--170.
+
+\bibitem{Rodrigo2026companion}
+R.~O.~Rodrigo,
+Physics-driven autosimilar function spaces via the Homotopy Analysis
+Method: a unifying framework for neural approximation,
+2026, in preparation.
+
+\end{thebibliography}
+
+\end{document}

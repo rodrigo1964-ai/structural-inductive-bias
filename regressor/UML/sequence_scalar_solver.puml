@@ -1,0 +1,25 @@
+@startuml
+title Flujo de uso - Regresor escalar HAM (orden 1/2)
+
+actor Usuario
+participant "regressor.py\nbuild_regressor_order*" as Builder
+participant "solver.py\nloop k=2..n-1" as Solver
+participant "Modelo f(y, y')" as Model
+
+Usuario -> Builder : define f_expr (SymPy)\nllama build_regressor_order1/2
+Builder -> Builder : deriva simbolicamente\nf, df, d2f, d3f
+Builder --> Usuario : regressor callable + info
+
+Usuario -> Solver : regressor(u, y0, y1, T, n)
+loop para cada k
+  Solver -> Solver : inicializa y[k] = y[k-1]
+  Solver -> Model : evalua residual g y derivadas
+  Solver -> Solver : z1 (Newton)
+  Solver -> Model : reevaluacion
+  Solver -> Solver : z2 (curvatura/Hessiano)
+  Solver -> Model : reevaluacion
+  Solver -> Solver : z3 (tensor 3er orden)
+end
+Solver --> Usuario : trayectoria y(t_k)
+
+@enduml

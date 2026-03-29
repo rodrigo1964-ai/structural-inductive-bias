@@ -1,0 +1,26 @@
+@startuml
+title Flujo de identificacion de parametros (HAM)
+
+start
+:Definir F(y, yp, ypp, u, t; theta);
+:Definir theta_syms y state_syms;
+
+:check_lip(F, theta_syms);
+if (Es LIP?) then (Si)
+  :build_phi_matrix(...);
+  :Resolver (Phi'Phi + lambda L'L) theta = Phi'b;
+  if (lambda = auto?) then (Si)
+    :Seleccionar lambda por GCV;
+  endif
+  :Obtener theta_hat;
+else (No)
+  :Usar identify_nonlip (Levenberg-Marquardt);
+  :Iterar hasta convergencia;
+  :Obtener theta_hat;
+endif
+
+:Construir regressor parametrico\n(build_parametric_regressor);
+:Validar con verify_regressor_vs_rk45;
+stop
+
+@enduml

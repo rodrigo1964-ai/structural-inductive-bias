@@ -46,3 +46,6 @@ Thumbs.db
 # *.npz
 # *.h5
 # *.pkl
+
+# Documentation folder
+docs/

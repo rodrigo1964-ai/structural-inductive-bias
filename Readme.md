@@ -2,7 +2,9 @@
 
 **Submitted to** *Neurocomputing* (Elsevier), March 2026.
 
-**Author:** Rodolfo H. Rodrigo — UNSJ / INAUT-CONICET, San Juan, Argentina
+**Author:** Rodolfo H. Rodrigo — UNSJ / INAUT-CONICET, San Juan, Argentina  
+**ORCID:** [0000-0002-8787-0038](https://orcid.org/0000-0002-8787-0038)  
+**DOI:** [10.6084/m9.figshare.31896061](https://doi.org/10.6084/m9.figshare.31896061)
 
 ---
 
